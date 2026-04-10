@@ -1,0 +1,17 @@
+# Test artifacts
+test-volume/
+build.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

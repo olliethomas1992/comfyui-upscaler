@@ -18,6 +18,18 @@ if [ -n "$PUBLIC_KEY" ]; then
     service ssh start && echo "worker-comfyui: SSH server started" || echo "worker-comfyui: SSH server could not be started" >&2
 fi
 
+# Start model downloads in background so we don't block startup and get killed
+# by RunPod's health check. The handler/ComfyUI start immediately; if a job
+# arrives before models are ready, ComfyUI will fail the workflow but the
+# worker stays alive and healthy.
+if /download_models.sh --check 2>/dev/null; then
+    echo "worker-comfyui: All models already present — no download needed"
+else
+    echo "worker-comfyui: Models not yet available — starting background download"
+    /download_models.sh --background || echo "worker-comfyui: WARNING - Background model download failed to start" >&2
+    echo "worker-comfyui: Download progress logged to /tmp/model_download.log"
+fi
+
 # Use libtcmalloc for better memory management
 TCMALLOC="$(ldconfig -p | grep -Po "libtcmalloc.so.\d" | head -n 1)"
 export LD_PRELOAD="${TCMALLOC}"

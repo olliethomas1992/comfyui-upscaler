@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y \
     python3.12-dev \
     git \
     wget \
+    aria2 \
     libgl1 \
     libglib2.0-0 \
     libsm6 \
@@ -80,8 +81,8 @@ RUN uv pip install runpod requests websocket-client
 RUN uv pip install sageattention
 
 # Add application code and scripts
-ADD src/start.sh src/network_volume.py handler.py test_input.json ./
-RUN chmod +x /start.sh
+ADD src/start.sh src/download_models.sh src/network_volume.py handler.py test_input.json ./
+RUN chmod +x /start.sh /download_models.sh
 
 # Add script to install custom nodes
 COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install

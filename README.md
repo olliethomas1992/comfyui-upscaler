@@ -58,6 +58,8 @@ docker run --rm --gpus all \
 
 Then send `test_input.json` to `http://localhost:8188/runsync`.
 
+For comprehensive testing documentation (unit tests, build tests, integration tests, debugging), see [TESTING.md](TESTING.md).
+
 ## Workflow
 
 The workflow performs a 2x tile-based upscale:

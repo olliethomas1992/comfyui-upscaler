@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  worker:
+    build: .
+    image: comfyui-upscaler:test
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - SERVE_API_LOCALLY=true
+      - COMFY_API_AVAILABLE_MAX_RETRIES=100
+      - COMFY_API_AVAILABLE_INTERVAL_MS=500
+      - NETWORK_VOLUME_DEBUG=true
+      - REFRESH_WORKER=false
+    volumes:
+      - ./test-volume:/runpod-volume
+    ports:
+      - "8000:8000"
+      - "8188:8188"

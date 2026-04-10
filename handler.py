@@ -55,6 +55,8 @@ if os.environ.get("WEBSOCKET_TRACE", "false").lower() == "true":
 
 # Host where ComfyUI is running
 COMFY_HOST = "127.0.0.1:8188"
+# Overall execution timeout for ComfyUI jobs (websocket loop)
+COMFY_EXECUTION_TIMEOUT_S = int(os.environ.get('COMFY_EXECUTION_TIMEOUT_S', '600'))  # 10 min default
 # Enforce a clean state after each job is done
 # see https://docs.runpod.io/docs/handler-additional-controls#refresh-worker
 REFRESH_WORKER = os.environ.get("REFRESH_WORKER", "false").lower() == "true"
@@ -613,10 +615,8 @@ def handler(job):
         if upload_result["status"] == "error":
             # Return upload errors
             return {
-                "error": "Failed to upload one or more input images",
-                "details": upload_result["details"],
+                "error": f"Failed to upload one or more input images: {upload_result['details']}",
             }
-
     ws = None
     client_id = str(uuid.uuid4())
     prompt_id = None
@@ -629,6 +629,7 @@ def handler(job):
         print(f"worker-comfyui - Connecting to websocket: {ws_url}")
         ws = websocket.WebSocket()
         ws.connect(ws_url, timeout=10)
+        ws.settimeout(30)
         print(f"worker-comfyui - Websocket connected")
 
         # Queue the workflow
@@ -659,7 +660,15 @@ def handler(job):
         # Wait for execution completion via WebSocket
         print(f"worker-comfyui - Waiting for workflow execution ({prompt_id})...")
         execution_done = False
+        ws_loop_start = time.time()
         while True:
+            # Check overall execution timeout
+            elapsed = time.time() - ws_loop_start
+            if elapsed > COMFY_EXECUTION_TIMEOUT_S:
+                print(f"worker-comfyui - Execution timed out after {COMFY_EXECUTION_TIMEOUT_S}s")
+                if ws and ws.connected:
+                    ws.close()
+                return {"error": f"ComfyUI execution timed out after {COMFY_EXECUTION_TIMEOUT_S}s"}
             try:
                 out = ws.recv()
                 if isinstance(out, str):
@@ -704,6 +713,22 @@ def handler(job):
                         closed_err,
                     )
 
+                    # Check if the prompt already completed while we were disconnected
+                    try:
+                        hist = get_history(prompt_id)
+                        if prompt_id in hist:
+                            prompt_outputs = hist[prompt_id].get("outputs", {})
+                            if prompt_outputs:
+                                print(
+                                    f"worker-comfyui - Prompt {prompt_id} already completed (found in history after reconnect)."
+                                )
+                                execution_done = True
+                                break
+                    except Exception as hist_err:
+                        print(
+                            f"worker-comfyui - Could not check history after reconnect: {hist_err}"
+                        )
+
                     print(
                         "worker-comfyui - Resuming message listening after successful reconnect."
                     )
@@ -735,10 +760,8 @@ def handler(job):
             else:
                 errors.append(error_msg)
                 return {
-                    "error": "Job processing failed, prompt ID not found in history.",
-                    "details": errors,
+                    "error": f"Job processing failed, prompt ID not found in history. Details: {errors}",
                 }
-
         prompt_history = history.get(prompt_id, {})
         outputs = prompt_history.get("outputs", {})
 
@@ -882,8 +905,7 @@ def handler(job):
     if not output_data and errors:
         print(f"worker-comfyui - Job failed with no output images.")
         return {
-            "error": "Job processing failed",
-            "details": errors,
+            "error": f"Job processing failed: {errors}",
         }
     elif not output_data and not errors:
         print(
@@ -898,4 +920,4 @@ def handler(job):
 
 if __name__ == "__main__":
     print("worker-comfyui - Starting handler...")
-    runpod.serverless.start({"handler": handler})
+    runpod.serverless.start({"handler": handler, "refresh_worker": REFRESH_WORKER})
